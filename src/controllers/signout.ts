@@ -1,4 +1,3 @@
-import { deteleData } from "@/redis/cache";
 import { Request, Response } from "express";
 import { StatusCodes } from "http-status-codes";
 
@@ -12,7 +11,7 @@ export async function signout(req: Request, res: Response) {
   //     console.log(keys);
   //     await redisClient.del(keys);
   //   }
-  deteleData("sid:12132121:*");
+  // deteleData("sid:12132121:*");
   res.clearCookie("session");
   res.status(StatusCodes.OK).send("oke");
 }

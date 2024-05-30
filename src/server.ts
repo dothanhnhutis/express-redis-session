@@ -9,8 +9,8 @@ import configs from "./configs";
 import { StatusCodes } from "http-status-codes";
 import { CustomError, IErrorResponse, NotFoundError } from "./error-handler";
 import { appRouter } from "./router";
-import { initRedis } from "./redis/connection";
 import { session } from "./middlewares/session";
+import { RedisStore } from "./redis/connection";
 
 const SERVER_PORT = 4000;
 
@@ -29,7 +29,6 @@ export default class RedisServer {
   }
   private securityMiddleware(app: Application) {
     app.set("trust proxy", 1);
-    initRedis();
 
     app.use(helmet());
     app.use(
@@ -43,7 +42,10 @@ export default class RedisServer {
     app.use(
       session({
         name: "session",
-        secret: "4yD+uEp5duehSXRB7AslVkLaBQtiv20mjA7oJuB2opM=",
+        secret: configs.SESSION_SECRET,
+        store: new RedisStore({
+          prefix: "sess:",
+        }),
         cookie: {
           httpOnly: true,
           secure: configs.NODE_ENV == "production",

@@ -1,8 +1,8 @@
-import { CookieOptions, RequestHandler as MiddleWare, Request } from "express";
+import { RequestHandler as Middleware, CookieOptions, Request } from "express";
+import crypto from "crypto";
 import { parse } from "cookie";
 import { decrypt, encrypt } from "@/utils/helper";
-import crypto from "crypto";
-import { getData, setData } from "@/redis/cache";
+import { RedisStore } from "@/redis/connection";
 
 interface SessionData {
   cookie: CookieOptions;
@@ -18,12 +18,21 @@ declare global {
   }
 }
 
-interface SessionOptions {
+// passport
+// declare global {
+//   namespace Express {
+//     interface User extends CurrentUser {}
+//   }
+// }
+
+interface ISession {
+  name?: string;
   secret: string;
-  name?: string | undefined;
-  prefix?: string;
-  cookie?: CookieOptions | undefined;
+  resave?: boolean;
+  saveUninitialized?: boolean;
+  cookie?: CookieOptions;
   genId?: (request: Request) => string;
+  store: RedisStore;
 }
 
 function genIdDefault(req: Request) {
@@ -31,29 +40,25 @@ function genIdDefault(req: Request) {
   return randomId;
 }
 
-const cookieDefault: CookieOptions = {
-  path: "/",
-  httpOnly: true,
-  secure: false,
-};
-
 export const session =
   ({
-    name = "session",
+    name = "session:",
     secret,
+    resave,
+    saveUninitialized,
     cookie,
-    prefix = "sid",
+    store,
     genId = genIdDefault,
-  }: SessionOptions): MiddleWare =>
+  }: ISession): Middleware =>
   async (req, res, next) => {
     req.session = {
-      cookie: { ...cookieDefault, ...cookie },
+      cookie: { path: "/", httpOnly: true, secure: false, ...cookie },
     };
 
     const cookies = parse(req.get("cookie") || "");
     if (cookies[name]) {
       req.sessionID = decrypt(cookies[name], secret);
-      const cookieRedis = await getData(req.sessionID);
+      const cookieRedis = await store.get(req.sessionID);
       if (cookieRedis) {
         req.session = JSON.parse(cookieRedis);
       }
@@ -61,27 +66,21 @@ export const session =
 
     const cookieProxy = new Proxy<CookieOptions>(req.session.cookie, {
       set(target, p: keyof CookieOptions, newValue, receiver) {
-        console.log("CookieOptions");
-        console.log(target);
         if (p == "expires") {
           delete target["maxAge"];
         } else if (p == "maxAge") {
           delete target["expires"];
         }
         target[p] = newValue;
-        console.log(p);
-        console.log(target);
-
-        req.sessionID = req.sessionID || `${prefix}:${genId(req)}`;
+        req.sessionID = req.sessionID || `${store.prefix}${genId(req)}`;
         res.cookie(name, encrypt(req.sessionID, secret), target);
-        setData(
+        store.set(
           req.sessionID,
           JSON.stringify(req.session),
           target["expires"]
             ? Math.abs(target["expires"].getTime() - Date.now())
             : target["maxAge"]
         );
-
         return true;
       },
     });
@@ -110,20 +109,17 @@ export const session =
           if (p == "user") {
             target[p] = newValue;
           }
-
-          req.sessionID = req.sessionID || `${prefix}:${genId(req)}`;
+          req.sessionID = req.sessionID || `${store.prefix}${genId(req)}`;
           res.cookie(name, encrypt(req.sessionID, secret), {
             ...target.cookie,
           });
-
-          setData(
+          store.set(
             req.sessionID,
             JSON.stringify(target),
             target.cookie.expires
               ? Math.abs(target.cookie.expires.getTime() - Date.now())
               : target.cookie.maxAge
           );
-
           return true;
         },
       }
