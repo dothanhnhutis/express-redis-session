@@ -1,0 +1,9 @@
+tsconfig.json
+.DS_Store
+node_modules
+.github
+.changeset
+src
+pnpm-lock.yaml
+vite.config.ts
+.env
